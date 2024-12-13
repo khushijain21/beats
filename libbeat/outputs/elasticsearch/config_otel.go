@@ -129,7 +129,7 @@ func ToOTelConfig(beatCfg *config.C) (map[string]any, error) {
 		// Authentication
 		"user":     escfg.Username, // username
 		"password": escfg.Password, // password
-		"api_key":  escfg.APIKey,   // api_key
+		// "api_key":  escfg.APIKey,   // api_key
 
 		// ClientConfig
 		"proxy_url":         esToOTelOptions.ProxyURL,         // proxy_url
@@ -144,12 +144,15 @@ func ToOTelConfig(beatCfg *config.C) (map[string]any, error) {
 			"initial_interval": escfg.Backoff.Init, // backoff.init
 			"max_interval":     escfg.Backoff.Max,  // backoff.max
 		},
-
-		// Batcher
-		"batcher": map[string]any{
-			"enabled":        true,
-			"max_size_items": escfg.BulkMaxSize, // bulk_max_size
+		"flush": map[string]any{
+			"bytes": 10,
 		},
+		// Batcher
+		// "batcher": map[string]any{
+		// 	"enabled":        true,
+		// 	"min_size_items": 1,
+		// 	// "max_size_items": escfg.BulkMaxSize, // bulk_max_size
+		// },
 	}
 
 	// For type safety check only
