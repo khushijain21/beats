@@ -48,6 +48,7 @@ type unsupportedConfig struct {
 	EscapeHTML         bool              `config:"escape_html"`
 	Kerberos           *kerberos.Config  `config:"kerberos"`
 	MaxRetries         int               `config:"max_retries"`
+	BulkMaxSize        int               `config:"bulk_max_size"`
 }
 
 // ToOTelConfig converts a Beat config into an OTel elasticsearch exporter config
@@ -121,7 +122,7 @@ func ToOTelConfig(beatCfg *config.C) (map[string]any, error) {
 	}
 
 	otelYAMLCfg := map[string]any{
-		// "logs_index":  esToOTelOptions.Index,    // index
+		"logs_index":  esToOTelOptions.Index,    // index
 		"pipeline":    esToOTelOptions.Pipeline, // pipeline
 		"endpoints":   hosts,                    // hosts, protocol, path, port
 		"num_workers": workersCfg.NumWorkers(),  // worker/workers
@@ -129,7 +130,7 @@ func ToOTelConfig(beatCfg *config.C) (map[string]any, error) {
 		// Authentication
 		"user":     escfg.Username, // username
 		"password": escfg.Password, // password
-		// "api_key":  escfg.APIKey,   // api_key
+		"api_key":  escfg.APIKey,   // api_key
 
 		// ClientConfig
 		"proxy_url":         esToOTelOptions.ProxyURL,         // proxy_url
@@ -144,14 +145,11 @@ func ToOTelConfig(beatCfg *config.C) (map[string]any, error) {
 			"initial_interval": escfg.Backoff.Init, // backoff.init
 			"max_interval":     escfg.Backoff.Max,  // backoff.max
 		},
-		"flush": map[string]any{
-			"bytes": 10,
-		},
-		// Batcher
+
+		// Batcher is experimental and by not setting it, we are using the exporter's default batching mechanism
 		// "batcher": map[string]any{
-		// 	"enabled":        true,
-		// 	"min_size_items": 1,
-		// 	// "max_size_items": escfg.BulkMaxSize, // bulk_max_size
+		// 	"enabled":       true,
+		// 	"max_size_items": escfg.BulkMaxSize, // bulk_max_size
 		// },
 	}
 

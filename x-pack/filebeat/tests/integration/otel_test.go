@@ -36,9 +36,6 @@ output:
     hosts:
       - localhost:4242
     protocol: http
-    backoff:
-      init: 0.1s
-      max: 0.2s	
 logging:
   level: debug
   event_data:
@@ -63,8 +60,8 @@ func TestEventsLoggerESOutput(t *testing.T) {
 	}
 
 	_, _ = logFile.WriteString(`
-	this is first log
-	this is second log
+	this is first test log
+	this is second test log
 	`)
 	if err := logFile.Sync(); err != nil {
 		t.Fatalf("could not sync log file '%s': %s", logFilePath, err)
