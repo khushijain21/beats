@@ -148,7 +148,7 @@ func ToOTelConfig(beatCfg *config.C) (map[string]any, error) {
 
 		// Batcher is experimental and by not setting it, we are using the exporter's default batching mechanism
 		// "batcher": map[string]any{
-		// 	"enabled":       true,
+		// 	"enabled":        true,
 		// 	"max_size_items": escfg.BulkMaxSize, // bulk_max_size
 		// },
 	}

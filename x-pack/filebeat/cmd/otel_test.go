@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/elastic/beats/v7/x-pack/libbeat/common/otelbeat"
 )
 
 func TestOtel(t *testing.T) {
 	// Create the command
-	cmd := OtelCmd()
+	cmd := otelbeat.OTelCmd("filebeat")
 
 	// Set up a context with a timeout to avoid indefinite blocking
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
