@@ -26,6 +26,10 @@ import (
 	"github.com/elastic/elastic-agent-libs/transport/httpcommon"
 )
 
+type elasticsearchConfig2 struct {
+	Protocol string `config:"protocol"`
+}
+
 type elasticsearchConfig struct {
 	Protocol           string            `config:"protocol"`
 	Path               string            `config:"path"`
