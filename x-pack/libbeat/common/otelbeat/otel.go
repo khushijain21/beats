@@ -17,15 +17,14 @@ import (
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/receiver"
 
-	"github.com/elastic/beats/v7/libbeat/otelbeat/converters"
+	"github.com/elastic/beats/v7/libbeat/otelbeat/beatconverter"
 	"github.com/elastic/beats/v7/libbeat/otelbeat/providers/fbprovider"
 	"github.com/elastic/beats/v7/x-pack/filebeat/fbreceiver"
 	"github.com/elastic/elastic-agent-libs/logp"
 )
 
 var schemeMap = map[string]string{
-	"filebeat":   "fb",
-	"metricbeat": "mb",
+	"filebeat": "fb",
 }
 
 func OTelCmd(beatname string) *cobra.Command {
@@ -97,7 +96,7 @@ func getCollectorSettings(filename string) otelcol.CollectorSettings {
 					fbprovider.NewFactory(),
 				},
 				ConverterFactories: []confmap.ConverterFactory{
-					converters.NewFactory(),
+					beatconverter.NewFactory(),
 				},
 			},
 		},
