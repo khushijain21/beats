@@ -7,21 +7,20 @@
 package integration
 
 import (
-	"errors"
+	"context"
+	"crypto/tls"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/gofrs/uuid/v5"
-	"github.com/rcrowley/go-metrics"
 	"github.com/stretchr/testify/require"
 
 	"github.com/elastic/beats/v7/libbeat/tests/integration"
-	"github.com/elastic/mock-es/pkg/api"
+	"github.com/elastic/elastic-agent-libs/testing/estools"
+	"github.com/elastic/go-elasticsearch/v7"
 )
 
 var eventsLogFileCfg = `
@@ -34,16 +33,17 @@ filebeat.inputs:
 output:
   elasticsearch:
     hosts:
-      - localhost:4242
+      - localhost:9200
     protocol: http
-logging:
-  level: debug
-  event_data:
-    files:
-      name: filebeat-my-event-log  
+    username: admin
+    password: testing
+    index: otel-integration-logs
+queue.mem.flush.timeout: 0s
 `
 
-func TestEventsLoggerESOutput(t *testing.T) {
+func TestFilebeatOTelE2E(t *testing.T) {
+	integration.EnsureESIsRunning(t)
+
 	filebeat := integration.NewBeat(
 		t,
 		"filebeat-otel",
@@ -59,10 +59,16 @@ func TestEventsLoggerESOutput(t *testing.T) {
 		t.Fatalf("could not create file '%s': %s", logFilePath, err)
 	}
 
-	_, _ = logFile.WriteString(`
-	this is first test log
-	this is second test log
-	`)
+	numEvents := 10
+	var msg string
+	var originalMessage = make(map[string]bool)
+	for i := 0; i < numEvents; i++ {
+		msg = fmt.Sprintf("Line %d", i)
+		originalMessage[msg] = false
+		_, err = logFile.Write([]byte(msg + "\n"))
+		require.NoErrorf(t, err, "failed to write line %d to temp file", i)
+	}
+
 	if err := logFile.Sync(); err != nil {
 		t.Fatalf("could not sync log file '%s': %s", logFilePath, err)
 	}
@@ -70,66 +76,50 @@ func TestEventsLoggerESOutput(t *testing.T) {
 		t.Fatalf("could not close log file '%s': %s", logFilePath, err)
 	}
 
-	s, mr := startMockES(t, "localhost:4242")
-
 	filebeat.Start()
 
-	// 1. Wait for one _bulk call
-	waitForEventToBePublished(t, mr)
+	esCfg := elasticsearch.Config{
+		Addresses: []string{"http://localhost:9200"},
+		Username:  "admin",
+		Password:  "testing",
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	es, err := elasticsearch.NewClient(esCfg)
+	require.NoError(t, err)
 
-	s.Close()
-}
+	// wait for logs to be published
+	require.Eventually(t,
+		func() bool {
+			findCtx, findCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer findCancel()
 
-func startMockES(t *testing.T, addr string) (*http.Server, metrics.Registry) {
-	uid := uuid.Must(uuid.NewV4())
-	mr := metrics.NewRegistry()
-	es := api.NewAPIHandler(uid, "foo2", mr, time.Now().Add(24*time.Hour), 0, 0, 0, 0, 0)
+			docs, err := estools.GetAllLogsForIndexWithContext(findCtx, es, "otel-integration-logs")
+			require.NoError(t, err)
 
-	s := http.Server{Addr: addr, Handler: es, ReadHeaderTimeout: time.Second}
-	go func() {
-		if err := s.ListenAndServe(); !errors.Is(http.ErrServerClosed, err) {
-			t.Errorf("could not start mock-es server: %s", err)
-		}
-	}()
+			//Mark retrieved messages
+			for _, hit := range docs.Hits.Hits {
+				message := hit.Source["Body"].(map[string]interface{})["message"].(string)
 
-	require.Eventually(t, func() bool {
-		resp, err := http.Get("http://" + addr) //nolint: noctx // It's just a test
-		if err != nil {
-			//nolint: errcheck // We're just draining the body, we can ignore the error
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-			return false
-		}
-		return true
-	},
-		time.Second, time.Millisecond, "mock-es server did not start on '%s'", addr)
+				if _, exists := originalMessage[message]; exists {
+					originalMessage[message] = true // Mark as found
+				}
+			}
 
-	return &s, mr
-}
+			// Step 3: Check for missing messages
+			allRetrieved := true
+			for msg, retrieved := range originalMessage {
+				if !retrieved {
+					fmt.Printf("Missing original message: %s\n", msg)
+					allRetrieved = false
+				}
+			}
 
-// waitForEventToBePublished waits for at least one event published
-// by inspecting the count for `bulk.create.total` in `mr`. Once
-// the counter is > 1, waitForEventToBePublished returns. If that
-// does not happen within 10min, then the test fails with a call to
-// t.Fatal.
-func waitForEventToBePublished(t *testing.T, mr metrics.Registry) {
-	t.Helper()
-	require.Eventually(t, func() bool {
-		total := mr.Get("bulk.create.total")
+			return docs.Hits.Total.Value == numEvents && allRetrieved
+		},
+		4*time.Minute, 2*time.Second)
 
-		if total == nil {
-			return false
-		}
-
-		sc, ok := total.(*metrics.StandardCounter)
-		if !ok {
-			t.Fatalf("expecting 'bulk.create.total' to be *metrics.StandardCounter, but got '%T' instead",
-				total,
-			)
-		}
-
-		return sc.Count() > 1
-	},
-		30*time.Second, 100*time.Millisecond,
-		"at least one bulk request must be made")
 }
