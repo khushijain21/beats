@@ -211,7 +211,7 @@ func newTransformsFromConfig(registeredTransforms registry, config transformsCon
 			return nil, err
 		}
 
-		common.PrintConfigDebugf(cfg, "Configure transform '%v' with:", actionName)
+		common.PrintConfigDebugf(cfg, log, "Configure transform '%v' with:", actionName)
 		transform, err := constructor(cfg, stat, log)
 		if err != nil {
 			stat.UpdateStatus(status.Failed, fmt.Sprintf("failed to configure transform %s: %v", actionName, err))

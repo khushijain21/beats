@@ -154,7 +154,7 @@ type ProcessorRequirement struct {
 
 // readManifest reads the manifest file of the fileset.
 func (fs *Fileset) readManifest() (*manifest, error) {
-	cfg, err := common.LoadFile(filepath.Join(fs.modulePath, fs.name, "manifest.yml"))
+	cfg, err := common.LoadFile(filepath.Join(fs.modulePath, fs.name, "manifest.yml"), fs.logger)
 	if err != nil {
 		return nil, fmt.Errorf("Error reading manifest file: %w", err)
 	}
@@ -416,7 +416,7 @@ func (fs *Fileset) getInputConfig() (*conf.C, error) {
 		return nil, fmt.Errorf("Error setting the _fileset_name cfg in the input config: %w", err)
 	}
 
-	common.PrintConfigDebugf(cfg, "Merged input config for fileset %s/%s", fs.mname, fs.name)
+	common.PrintConfigDebugf(cfg, fs.logger, "Merged input config for fileset %s/%s", fs.mname, fs.name)
 
 	return cfg, nil
 }

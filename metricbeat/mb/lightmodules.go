@@ -207,7 +207,7 @@ func (s *LightModulesSource) findModulePath(moduleName string) (string, bool) {
 }
 
 func (s *LightModulesSource) loadModuleConfig(modulePath string) (*lightModuleConfig, error) {
-	config, err := common.LoadFile(modulePath)
+	config, err := common.LoadFile(modulePath, s.log)
 	if err != nil {
 		return nil, fmt.Errorf("loading module configuration from '%s': %w", modulePath, err)
 	}
@@ -243,7 +243,7 @@ func (s *LightModulesSource) loadMetricSets(register *Register, moduleDirPath, m
 }
 
 func (s *LightModulesSource) loadMetricSetConfig(manifestPath string) (ms LightMetricSet, err error) {
-	config, err := common.LoadFile(manifestPath)
+	config, err := common.LoadFile(manifestPath, s.log)
 	if err != nil {
 		return ms, fmt.Errorf("loading metricset manifest from '%s': %w", manifestPath, err)
 	}

@@ -93,7 +93,7 @@ func run() error {
 		return err
 	}
 
-	common.PrintConfigDebugf(cfg, "input config:")
+	common.PrintConfigDebugf(cfg, logger, "input config:")
 
 	return stress.RunTests(info, duration, cfg, nil)
 }

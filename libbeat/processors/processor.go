@@ -99,7 +99,7 @@ func New(config PluginConfig, logger *logp.Logger) (*Processors, error) {
 			return nil, fmt.Errorf("the processor action %s does not exist. Valid actions: %v", actionName, strings.Join(validActions, ", "))
 		}
 
-		common.PrintConfigDebugf(actionCfg, "Configure processor action '%v' with:", actionName)
+		common.PrintConfigDebugf(actionCfg, logger, "Configure processor action '%v' with:", actionName)
 		constructor := gen.Plugin()
 		plugin, err := constructor(actionCfg, logger)
 		if err != nil {

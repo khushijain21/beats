@@ -71,24 +71,24 @@ func init() {
 	Indexing.AddMatcher(FieldFormatMatcherName, NewFieldFormatMatcher)
 }
 
-func isKubernetesAvailable(client k8sclient.Interface) (bool, error) {
+func isKubernetesAvailable(client k8sclient.Interface, logger *logp.Logger) (bool, error) {
 	server, err := client.Discovery().ServerVersion()
 	if err != nil {
 		return false, err
 	}
-	logp.Info("%v: kubernetes env detected, with version: %v", "add_kubernetes_metadata", server)
+	logger.Info("%v: kubernetes env detected, with version: %v", "add_kubernetes_metadata", server)
 	return true, nil
 }
 
-func isKubernetesAvailableWithRetry(client k8sclient.Interface) bool {
+func isKubernetesAvailableWithRetry(client k8sclient.Interface, logger *logp.Logger) bool {
 	connectionAttempts := 1
 	for {
-		kubernetesAvailable, err := isKubernetesAvailable(client)
+		kubernetesAvailable, err := isKubernetesAvailable(client, logger)
 		if kubernetesAvailable {
 			return true
 		}
 		if connectionAttempts > checkNodeReadyAttempts {
-			logp.Info("%v: could not detect kubernetes env: %v", "add_kubernetes_metadata", err)
+			logger.Infof("%v: could not detect kubernetes env: %v", "add_kubernetes_metadata", err)
 			return false
 		}
 		time.Sleep(3 * time.Second)
@@ -170,7 +170,7 @@ func (k *kubernetesAnnotator) init(config kubeAnnotatorConfig, cfg *config.C) {
 			return
 		}
 
-		if !isKubernetesAvailableWithRetry(client) {
+		if !isKubernetesAvailableWithRetry(client, k.log) {
 			return
 		}
 
@@ -275,7 +275,7 @@ func (k *kubernetesAnnotator) init(config kubeAnnotatorConfig, cfg *config.C) {
 		// TODO: refactor the above section to a common function to be used by NeWPodEventer too
 		metaGen := metadata.GetPodMetaGen(cfg, watcher, nodeWatcher, namespaceWatcher, replicaSetWatcher, jobWatcher, metaConf)
 
-		k.indexers = NewIndexers(config.Indexers, metaGen)
+		k.indexers = NewIndexers(config.Indexers, metaGen, k.log)
 		k.watcher = watcher
 		k.kubernetesAvailable = true
 		k.nodeWatcher = nodeWatcher

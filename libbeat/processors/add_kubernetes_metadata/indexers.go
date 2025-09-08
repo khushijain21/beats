@@ -61,19 +61,19 @@ type Indexers struct {
 type IndexerConstructor func(config config.C, metaGen metadata.MetaGen) (Indexer, error)
 
 // NewIndexers builds indexers object
-func NewIndexers(configs PluginConfig, metaGen metadata.MetaGen) *Indexers {
+func NewIndexers(configs PluginConfig, metaGen metadata.MetaGen, logger *logp.Logger) *Indexers {
 	indexers := []Indexer{}
 	for _, pluginConfigs := range configs {
 		for name, pluginConfig := range pluginConfigs {
 			indexFunc := Indexing.GetIndexer(name)
 			if indexFunc == nil {
-				logp.Warn("Unable to find indexing plugin %s", name)
+				logger.Warnf("Unable to find indexing plugin %s", name)
 				continue
 			}
 
 			indexer, err := indexFunc(pluginConfig, metaGen)
 			if err != nil {
-				logp.Warn("Unable to initialize indexing plugin %s due to error %v", name, err)
+				logger.Warnf("Unable to initialize indexing plugin %s due to error %v", name, err)
 				continue
 			}
 

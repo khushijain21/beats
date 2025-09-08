@@ -54,29 +54,25 @@ const (
 	selectorConfigWithPassword = "config-with-passwords"
 )
 
-// make hasSelector and configDebugf available for unit testing
-var hasSelector = logp.HasSelector
-var configDebugf = logp.Debug
-
-func PrintConfigDebugf(c *config.C, msg string, params ...interface{}) {
+func PrintConfigDebugf(c *config.C, logger *logp.Logger, msg string, params ...interface{}) {
 	selector := selectorConfigWithPassword
 	filtered := false
-	if !hasSelector(selector) {
+	if logger.HasSelector(selector) {
 		selector = selectorConfig
 		filtered = true
 
-		if !hasSelector(selector) {
+		if !logger.HasSelector(selector) {
 			return
 		}
 	}
 
 	debugStr := config.DebugString(c, filtered)
 	if debugStr != "" {
-		configDebugf(selector, "%s\n%s", fmt.Sprintf(msg, params...), debugStr)
+		logger.Named(selector).Debugf("%s\n%s", fmt.Sprintf(msg, params...), debugStr)
 	}
 }
 
-func LoadFile(path string) (*config.C, error) {
+func LoadFile(path string, logger *logp.Logger) (*config.C, error) {
 	if IsStrictPerms() {
 		if err := OwnerHasExclusiveWritePerms(path); err != nil {
 			return nil, err
@@ -89,14 +85,14 @@ func LoadFile(path string) (*config.C, error) {
 	}
 
 	cfg := fromConfig(c)
-	PrintConfigDebugf(cfg, "load config file '%v' =>", path)
+	PrintConfigDebugf(cfg, logger, "load config file '%v' =>", path)
 	return cfg, err
 }
 
 func LoadFiles(paths ...string) (*config.C, error) {
 	merger := cfgutil.NewCollector(nil, configOpts...)
 	for _, path := range paths {
-		cfg, err := LoadFile(path)
+		cfg, err := LoadFile(path, logp.NewLogger(""))
 		if err := merger.Add(access(cfg), err); err != nil {
 			return nil, err
 		}

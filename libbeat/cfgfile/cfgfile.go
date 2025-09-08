@@ -117,7 +117,7 @@ func HandleFlags() error {
 	_ = defaults.SetString("path.home", -1, home)
 
 	if len(overwrites.GetFields()) > 0 {
-		common.PrintConfigDebugf(overwrites, "CLI setting overwrites (-E flag):")
+		common.PrintConfigDebugf(overwrites, logp.NewLogger(""), "CLI setting overwrites (-E flag):")
 	}
 
 	// Enable check to see if beat is running under Agent
@@ -170,7 +170,7 @@ func Load(path string, beatOverrides []ConditionalOverride) (*config.C, error) {
 			if !filepath.IsAbs(path) {
 				path = filepath.Join(cfgpath, path)
 			}
-			c, err = common.LoadFile(path)
+			c, err = common.LoadFile(path, logp.NewLogger(""))
 		}
 		if err != nil {
 			return nil, err
@@ -208,14 +208,14 @@ func Load(path string, beatOverrides []ConditionalOverride) (*config.C, error) {
 		}
 	}
 
-	common.PrintConfigDebugf(c, "Complete configuration loaded:")
+	common.PrintConfigDebugf(c, logp.NewLogger(""), "Complete configuration loaded:")
 	return c, nil
 }
 
 // LoadList loads a list of configs data from the given file.
 func LoadList(file string, logger *logp.Logger) ([]*config.C, error) {
 	logger.Named("cfgfile").Debugf("Load config from file: %s", file)
-	rawConfig, err := common.LoadFile(file)
+	rawConfig, err := common.LoadFile(file, logger)
 	if err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}

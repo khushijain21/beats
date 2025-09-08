@@ -31,6 +31,7 @@ var ErrClosed = errors.New("attempt to use a closed processor")
 type SafeProcessor struct {
 	beat.Processor
 	closed uint32
+	logger *logp.Logger
 }
 
 // Run allows to run processor only when `Close` was not called prior
@@ -46,7 +47,7 @@ func (p *SafeProcessor) Close() (err error) {
 	if atomic.CompareAndSwapUint32(&p.closed, 0, 1) {
 		return Close(p.Processor)
 	}
-	logp.L().Warnf("tried to close already closed %q processor", p.Processor.String())
+	p.logger.Warnf("tried to close already closed %q processor", p.Processor.String())
 	return nil
 }
 
@@ -75,6 +76,7 @@ func SafeWrap(constructor Constructor) Constructor {
 
 		return &SafeProcessor{
 			Processor: processor,
+			logger:    log,
 		}, nil
 	}
 }
