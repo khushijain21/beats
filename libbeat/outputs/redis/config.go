@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/elastic/beats/v7/libbeat/outputs"
 	"github.com/elastic/beats/v7/libbeat/outputs/codec"
 	"github.com/elastic/elastic-agent-libs/config"
 	"github.com/elastic/elastic-agent-libs/transport"
@@ -28,20 +29,21 @@ import (
 )
 
 type redisConfig struct {
-	Password    string                `config:"password"`
-	Index       string                `config:"index"`
-	Key         string                `config:"key"`
-	LoadBalance bool                  `config:"loadbalance"`
-	Timeout     time.Duration         `config:"timeout"`
-	BulkMaxSize int                   `config:"bulk_max_size"`
-	MaxRetries  int                   `config:"max_retries"`
-	TLS         *tlscommon.Config     `config:"ssl"`
-	Proxy       transport.ProxyConfig `config:",inline"`
-	Codec       codec.Config          `config:"codec"`
-	Db          int                   `config:"db"`
-	DataType    string                `config:"datatype"`
-	Backoff     backoff               `config:"backoff"`
-	Queue       config.Namespace      `config:"queue"`
+	Password              string                `config:"password"`
+	Index                 string                `config:"index"`
+	Key                   string                `config:"key"`
+	LoadBalance           bool                  `config:"loadbalance"`
+	Timeout               time.Duration         `config:"timeout"`
+	BulkMaxSize           int                   `config:"bulk_max_size"`
+	MaxRetries            int                   `config:"max_retries"`
+	TLS                   *tlscommon.Config     `config:"ssl"`
+	Proxy                 transport.ProxyConfig `config:",inline"`
+	Codec                 codec.Config          `config:"codec"`
+	Db                    int                   `config:"db"`
+	DataType              string                `config:"datatype"`
+	Backoff               backoff               `config:"backoff"`
+	Queue                 config.Namespace      `config:"queue"`
+	outputs.HostWorkerCfg `config:",inline"`
 }
 
 type backoff struct {

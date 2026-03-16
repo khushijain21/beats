@@ -78,6 +78,8 @@ type Group struct {
 	//   and clear Content anyway. Metadata about the error should be saved in
 	//   EncodedEvent and reported when Publish is called.
 	EncoderFactory queue.EncoderFactory
+
+	Worker int
 }
 
 // RegisterType registers a new output type.

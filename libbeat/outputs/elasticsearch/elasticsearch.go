@@ -132,7 +132,17 @@ func makeES(
 		clients[i] = client
 	}
 
-	return outputs.SuccessNet(esConfig.Queue, esConfig.LoadBalance, esConfig.BulkMaxSize, esConfig.MaxRetries, encoderFactory, beatInfo.Logger, beatPaths, clients)
+	return outputs.SuccessNet(
+		esConfig.Queue,
+		esConfig.LoadBalance,
+		esConfig.BulkMaxSize,
+		esConfig.MaxRetries,
+		encoderFactory,
+		beatInfo.Logger,
+		beatPaths,
+		esConfig.NumWorkers(),
+		clients,
+	)
 }
 
 func buildSelectors(

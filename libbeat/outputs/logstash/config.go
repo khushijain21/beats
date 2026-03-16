@@ -24,25 +24,27 @@ import (
 	"github.com/elastic/elastic-agent-libs/config"
 
 	"github.com/elastic/beats/v7/libbeat/common/cfgwarn"
+	"github.com/elastic/beats/v7/libbeat/outputs"
 	"github.com/elastic/elastic-agent-libs/transport"
 	"github.com/elastic/elastic-agent-libs/transport/tlscommon"
 )
 
 type Config struct {
-	Index            string                `config:"index"`
-	LoadBalance      bool                  `config:"loadbalance"`
-	BulkMaxSize      int                   `config:"bulk_max_size"`
-	SlowStart        bool                  `config:"slow_start"`
-	Timeout          time.Duration         `config:"timeout"`
-	TTL              time.Duration         `config:"ttl"               validate:"min=0"`
-	Pipelining       int                   `config:"pipelining"        validate:"min=0"`
-	CompressionLevel int                   `config:"compression_level" validate:"min=0, max=9"`
-	MaxRetries       int                   `config:"max_retries"       validate:"min=-1"`
-	TLS              *tlscommon.Config     `config:"ssl"`
-	Proxy            transport.ProxyConfig `config:",inline"`
-	Backoff          Backoff               `config:"backoff"`
-	EscapeHTML       bool                  `config:"escape_html"`
-	Queue            config.Namespace      `config:"queue"`
+	Index                 string                `config:"index"`
+	LoadBalance           bool                  `config:"loadbalance"`
+	BulkMaxSize           int                   `config:"bulk_max_size"`
+	SlowStart             bool                  `config:"slow_start"`
+	Timeout               time.Duration         `config:"timeout"`
+	TTL                   time.Duration         `config:"ttl"               validate:"min=0"`
+	Pipelining            int                   `config:"pipelining"        validate:"min=0"`
+	CompressionLevel      int                   `config:"compression_level" validate:"min=0, max=9"`
+	MaxRetries            int                   `config:"max_retries"       validate:"min=-1"`
+	TLS                   *tlscommon.Config     `config:"ssl"`
+	Proxy                 transport.ProxyConfig `config:",inline"`
+	Backoff               Backoff               `config:"backoff"`
+	EscapeHTML            bool                  `config:"escape_html"`
+	Queue                 config.Namespace      `config:"queue"`
+	outputs.HostWorkerCfg `config:",inline"`
 }
 
 type Backoff struct {

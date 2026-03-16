@@ -68,13 +68,13 @@ func ReadHostList(cfg *config.C) ([]string, error) {
 		return lst, nil
 	}
 
-	// duplicate entries config.NumWorkers() times
-	hosts := make([]string, 0, len(lst)*config.NumWorkers())
-	for _, entry := range lst {
-		for i := 0; i < config.NumWorkers(); i++ {
-			hosts = append(hosts, entry)
-		}
-	}
+	// // duplicate entries config.NumWorkers() times
+	// hosts := make([]string, 0, len(lst)*config.NumWorkers())
+	// for _, entry := range lst {
+	// 	for i := 0; i < config.NumWorkers(); i++ {
+	// 		hosts = append(hosts, entry)
+	// 	}
+	// }
 
-	return hosts, nil
+	return config.Hosts, nil
 }

@@ -65,17 +65,12 @@ func makeKafka(
 		return outputs.Fail(err)
 	}
 
-	hosts, err := outputs.ReadHostList(cfg)
-	if err != nil {
-		return outputs.Fail(err)
-	}
-
 	codec, err := codec.CreateEncoder(beat, kConfig.Codec)
 	if err != nil {
 		return outputs.Fail(err)
 	}
 
-	client, err := newKafkaClient(observer, hosts, beat.IndexPrefix, kConfig.Key, topic, kConfig.Headers, codec, libCfg, beat.Logger)
+	client, err := newKafkaClient(observer, kConfig.Hosts, beat.IndexPrefix, kConfig.Key, topic, kConfig.Headers, codec, libCfg, beat.Logger)
 	if err != nil {
 		return outputs.Fail(err)
 	}
@@ -84,7 +79,7 @@ func makeKafka(
 	if kConfig.MaxRetries < 0 {
 		retry = -1
 	}
-	return outputs.Success(kConfig.Queue, kConfig.BulkMaxSize, retry, nil, beat.Logger, beatPaths, client)
+	return outputs.Success(kConfig.Queue, kConfig.BulkMaxSize, retry, nil, beat.Logger, beatPaths, 1, client)
 }
 
 // buildTopicSelector builds the topic selector for standalone Beat and when

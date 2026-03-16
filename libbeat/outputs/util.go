@@ -43,6 +43,7 @@ func Success(
 	encoderFactory queue.EncoderFactory,
 	logger *logp.Logger,
 	beatPaths *paths.Path,
+	workers int,
 	clients ...Client) (Group, error) {
 	var q queue.QueueFactory
 	if cfg.IsSet() && cfg.Config().Enabled() {
@@ -67,12 +68,17 @@ func Success(
 			return Group{}, fmt.Errorf("unknown queue type: %s", cfg.Name())
 		}
 	}
+
+	if workers < 1 {
+		return Group{}, fmt.Errorf("no. of workers cannot be less than 1")
+	}
 	return Group{
 		Clients:        clients,
 		BatchSize:      batchSize,
 		Retry:          retry,
 		QueueFactory:   q,
 		EncoderFactory: encoderFactory,
+		Worker:         workers,
 	}, nil
 }
 
@@ -85,16 +91,21 @@ func NetworkClients(netclients []NetworkClient) []Client {
 	return clients
 }
 
-// SuccessNet create a valid output Group and creates client instances
-// The first argument is expected to contain a queue config.Namespace.
-// The queue config is passed to assign the queue factory when
-// elastic-agent reloads the output.
-func SuccessNet(cfg config.Namespace, loadbalance bool, batchSize, retry int, encoderFactory queue.EncoderFactory, logger *logp.Logger, beatPaths *paths.Path, netclients []NetworkClient) (Group, error) {
+// SuccessNet is used to create valid output Group based on loadbalance
+func SuccessNet(cfg config.Namespace,
+	loadbalance bool,
+	batchSize, retry int,
+	encoderFactory queue.EncoderFactory,
+	logger *logp.Logger,
+	beatPaths *paths.Path,
+	workers int,
+	netclients []NetworkClient,
+) (Group, error) {
 
 	if !loadbalance {
-		return Success(cfg, batchSize, retry, encoderFactory, logger, beatPaths, NewFailoverClient(netclients))
+		return Success(cfg, batchSize, retry, encoderFactory, logger, beatPaths, workers, NewFailoverClient(netclients))
 	}
 
 	clients := NetworkClients(netclients)
-	return Success(cfg, batchSize, retry, encoderFactory, logger, beatPaths, clients...)
+	return Success(cfg, batchSize, retry, encoderFactory, logger, beatPaths, workers, clients...)
 }

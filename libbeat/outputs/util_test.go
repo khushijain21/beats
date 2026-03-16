@@ -110,7 +110,7 @@ func TestDiskQueueUnderAgent(t *testing.T) {
 			beatPaths := tt.pathsFunc(tempDir)
 
 			successLogger, logBuf := logp.NewInMemoryLocal("test-diskqueue", zapcore.EncoderConfig{})
-			group, err := Success(queueConfig, batchSize, retry, nil, successLogger, beatPaths)
+			group, err := Success(queueConfig, batchSize, retry, nil, successLogger, beatPaths, 1)
 			require.NoError(t, err)
 			require.NotNil(t, group)
 			require.NotNil(t, group.QueueFactory)

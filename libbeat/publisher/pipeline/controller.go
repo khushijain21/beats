@@ -18,6 +18,7 @@
 package pipeline
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -132,16 +133,10 @@ func (c *outputController) Set(outGrp outputs.Group) {
 		w.Close()
 	}
 
-	// create new output group with the shared work queue
-	clients := outGrp.Clients
-	c.workers = make([]outputWorker, len(clients))
-	logger := c.beat.Logger.Named("publisher_pipeline_output")
-	for i, client := range clients {
-		c.workers[i] = makeClientWorker(c.workerChan, client, logger, c.monitors.Tracer)
-	}
-
+	// sets
+	c.setWorkers(outGrp)
 	targetChan := c.workerChan
-	if len(clients) == 0 {
+	if len(outGrp.Clients) == 0 {
 		// If there are no output clients, we are probably still waiting
 		// for our output config from Agent via BeatV2Manager.reloadOutput.
 		// In this case outGrp.BatchSize is probably 0, allowing arbitrarily
@@ -159,6 +154,24 @@ func (c *outputController) Set(outGrp outputs.Group) {
 			batchSize:  outGrp.BatchSize,
 			timeToLive: outGrp.Retry + 1,
 		})
+}
+
+func (c *outputController) setWorkers(outGrp outputs.Group) {
+	// create new output group with the shared work queue
+	clients := outGrp.Clients
+	c.workers = make([]outputWorker, outGrp.Worker*len(clients))
+
+	logger := c.beat.Logger.Named("publisher_pipeline_output")
+
+	var i int
+	for range outGrp.Worker {
+		for _, client := range clients {
+			c.workers[i] = makeClientWorker(c.workerChan, client, logger, c.monitors.Tracer)
+			i++
+		}
+	}
+
+	fmt.Println("no. of workers", len(c.workers))
 }
 
 // Reload the output

@@ -69,7 +69,7 @@ func makeFileout(
 		return outputs.Fail(err)
 	}
 
-	return outputs.Success(foConfig.Queue, -1, 0, nil, beat.Logger, beatPaths, fo)
+	return outputs.Success(foConfig.Queue, -1, 0, nil, beat.Logger, beatPaths, 1, fo)
 }
 
 func (out *fileOutput) init(beat beat.Info, c fileOutConfig) error {

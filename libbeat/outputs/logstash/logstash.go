@@ -100,5 +100,15 @@ func MakeLogstashClients(
 		clients[i] = client
 	}
 
-	return outputs.SuccessNet(config.Queue, config.LoadBalance, config.BulkMaxSize, config.MaxRetries, nil, logger, beatPaths, clients)
+	return outputs.SuccessNet(
+		config.Queue,
+		config.LoadBalance,
+		config.BulkMaxSize,
+		config.MaxRetries,
+		nil,
+		logger,
+		beatPaths,
+		config.NumWorkers(),
+		clients,
+	)
 }

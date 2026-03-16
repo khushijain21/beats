@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/v7/libbeat/common/transport/kerberos"
+	"github.com/elastic/beats/v7/libbeat/outputs"
 	"github.com/elastic/elastic-agent-libs/config"
 	"github.com/elastic/elastic-agent-libs/transport/httpcommon"
 )
@@ -45,7 +46,8 @@ type ElasticsearchConfig struct {
 	AllowOlderVersion  bool              `config:"allow_older_versions"`
 	Queue              config.Namespace  `config:"queue"`
 
-	Transport httpcommon.HTTPTransportSettings `config:",inline"`
+	Transport             httpcommon.HTTPTransportSettings `config:",inline"`
+	outputs.HostWorkerCfg `config:",inline"`
 }
 
 type Backoff struct {
