@@ -136,11 +136,10 @@ func makeReporter(beat beat.Info, mon beatmonitoring.Monitoring, settings report
 		if err != nil {
 			return nil, err
 		}
-		clients[i] = client
+		clients[i] = outputs.WithBackoff(client, config.Backoff.Init, config.Backoff.Max)
 	}
 
 	outClient := outputs.NewFailoverClient(clients)
-	outClient = outputs.WithBackoff(outClient, config.Backoff.Init, config.Backoff.Max)
 
 	processing, err := processing.MakeDefaultSupport(true, nil)(beat, log, conf.NewConfig())
 	if err != nil {

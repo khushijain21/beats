@@ -23,14 +23,19 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
+	"sync"
 
 	"github.com/elastic/beats/v7/libbeat/publisher"
 	"github.com/elastic/elastic-agent-libs/testing"
 )
 
+var _ FailoverClient = (*failoverClient)(nil)
+
 type failoverClient struct {
-	clients []NetworkClient
-	active  int
+	clients   []NetworkClient
+	active    int
+	connected bool
+	mu        sync.RWMutex
 }
 
 var (
@@ -40,7 +45,7 @@ var (
 	errNoActiveConnection = errors.New("No active connection")
 )
 
-// NewFailoverClient combines a set of NetworkClients into one NetworkClient instances,
+// NewFailoverClient combines a set of NetworkClients into one FailoverClient,
 // with at most one active client. If the active client fails, another client
 // will be used.
 func NewFailoverClient(clients []NetworkClient) NetworkClient {
@@ -54,7 +59,20 @@ func NewFailoverClient(clients []NetworkClient) NetworkClient {
 	}
 }
 
+func (f *failoverClient) NumOfClients() int {
+	return len(f.clients)
+}
+
+func (f *failoverClient) IsConnected(_ context.Context) bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.connected
+}
+
 func (f *failoverClient) Connect(ctx context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	var (
 		next   int
 		active = f.active
@@ -63,6 +81,7 @@ func (f *failoverClient) Connect(ctx context.Context) error {
 
 	switch {
 	case l == 0:
+		f.connected = false
 		return ErrNoConnectionConfigured
 	case l == 1:
 		next = 0
@@ -82,22 +101,40 @@ func (f *failoverClient) Connect(ctx context.Context) error {
 
 	client := f.clients[next]
 	f.active = next
-	return client.Connect(ctx)
+	if err := client.Connect(ctx); err != nil {
+		f.connected = false
+		return err
+	}
+	f.connected = true
+	return nil
 }
 
 func (f *failoverClient) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	if f.active < 0 {
 		return errNoActiveConnection
 	}
-	return f.clients[f.active].Close()
+	err := f.clients[f.active].Close()
+	f.connected = false
+	return err
 }
 
 func (f *failoverClient) Publish(ctx context.Context, batch publisher.Batch) error {
-	if f.active < 0 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.active < 0 || !f.connected {
 		batch.Retry()
 		return errNoActiveConnection
 	}
-	return f.clients[f.active].Publish(ctx, batch)
+
+	err := f.clients[f.active].Publish(ctx, batch)
+	if err != nil {
+		f.connected = false
+	}
+	return err
 }
 
 func (f *failoverClient) Test(d testing.Driver) {

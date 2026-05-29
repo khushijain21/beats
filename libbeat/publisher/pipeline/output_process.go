@@ -142,8 +142,18 @@ func (c *processOutputController) Set(outGrp outputs.Group) {
 	clients := outGrp.Clients
 	c.workers = make([]outputWorker, len(clients))
 	logger := c.beat.Logger.Named("publisher_pipeline_output")
-	for i, client := range clients {
-		c.workers[i] = makeClientWorker(c.workerChan, client, logger, c.monitors.Tracer)
+
+	if len(clients) > 0 {
+		if fc, ok := clients[0].(outputs.FailoverClient); ok {
+			c.workers = make([]outputWorker, fc.NumOfClients())
+			for i := 0; i < fc.NumOfClients(); i++ {
+				c.workers[i] = makeClientWorker(c.workerChan, clients[0], logger, c.monitors.Tracer)
+			}
+		} else {
+			for i, client := range clients {
+				c.workers[i] = makeClientWorker(c.workerChan, client, logger, c.monitors.Tracer)
+			}
+		}
 	}
 
 	targetChan := c.workerChan

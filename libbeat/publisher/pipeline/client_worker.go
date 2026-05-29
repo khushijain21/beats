@@ -130,7 +130,27 @@ func (w *netClientWorker) run(ctx context.Context) {
 			}
 
 			// Try to (re)connect so we can publish batch
-			if !connected {
+			if fc, ok := w.client.(outputs.FailoverClient); ok {
+				if !fc.IsConnected(ctx) {
+					batch.Cancelled()
+
+					if reconnectAttempts == 0 {
+						w.logger.Infof("Connecting to %v", w.client)
+					} else {
+						w.logger.Infof("Attempting to reconnect to %v with %d reconnect attempt(s)", w.client, reconnectAttempts)
+					}
+
+					err := w.client.Connect(ctx)
+					if fc.IsConnected(ctx) {
+						w.logger.Infof("Connection to %v established", w.client)
+						reconnectAttempts = 0
+					} else {
+						w.logger.Errorf("Failed to connect to %v: %v", w.client, err)
+						reconnectAttempts++
+					}
+					continue
+				}
+			} else if !connected {
 				// Return batch to other output workers while we try to (re)connect
 				batch.Cancelled()
 
@@ -154,7 +174,9 @@ func (w *netClientWorker) run(ctx context.Context) {
 			}
 
 			if err := w.publishBatch(ctx, batch); err != nil {
-				connected = false
+				if _, ok := w.client.(outputs.FailoverClient); !ok {
+					connected = false
+				}
 			}
 		}
 	}

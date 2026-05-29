@@ -50,6 +50,13 @@ type NetworkClient interface {
 	Connectable
 }
 
+// FailoverClient should be concurrent safe.
+type FailoverClient interface {
+	NetworkClient
+	NumOfClients() int
+	IsConnected(context.Context) bool
+}
+
 // Connectable is optionally implemented by clients that might be able to close
 // and reconnect dynamically.
 type Connectable interface {
