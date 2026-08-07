@@ -1,0 +1,7 @@
+KafkaServer {
+    com.sun.security.auth.module.Krb5LoginModule required
+    useKeyTab=true
+    storeKey=true
+    keyTab="${KAFKA_KEYTAB}"
+    principal="kafka/${KAFKA_SERVICE_HOST}@${REALM_NAME}";
+};
