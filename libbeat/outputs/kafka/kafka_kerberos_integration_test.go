@@ -42,7 +42,7 @@ const (
 //
 // Targets the kafka_kerberos service from libbeat/docker-compose.yml
 // (GSSAPI on :9095) with Active Directory as the KDC
-// (testdata/krb5.conf → 35.232.29.86 / INGEST.EXAMPLE.COM).
+// (testdata/krb5.conf → [VM-IP] / INGEST.EXAMPLE.COM).
 func TestKafkaPublishKerberosAware(t *testing.T) {
 	id := strconv.Itoa(rand.Int())
 	testTopic := fmt.Sprintf("test-libbeat-kerberos-%s", id)
