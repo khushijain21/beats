@@ -4,7 +4,7 @@
 # (not an in-container MIT krb5kdc).
 #
 # Default AD endpoint (override via compose env):
-#   AD_KDC_HOST=35.232.29.86
+#   AD_KDC_HOST=[VM-IP]
 #   REALM_NAME=INGEST.EXAMPLE.COM
 #   AD_DOMAIN=ingest.example.com
 #
@@ -19,7 +19,7 @@ ENV KAFKA_VERSION=3.6.0
 ENV _JAVA_OPTIONS="-Djava.net.preferIPv4Stack=true"
 ENV TERM=linux
 
-ENV AD_KDC_HOST=35.232.29.86
+ENV AD_KDC_HOST=[VM-IP]
 ENV AD_DOMAIN=ingest.example.com
 ENV REALM_NAME=INGEST.EXAMPLE.COM
 ENV KAFKA_SERVICE_HOST=localhost

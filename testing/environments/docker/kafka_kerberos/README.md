@@ -13,7 +13,7 @@ Beats test (Mac)  --GSSAPI-->  Kafka container (:9095)
        |  AS-REQ / TGS-REQ            |  keytab login
        v                              v
          AD DC = KDC (TCP/UDP 88)
-         35.232.29.86
+         [VM-IP]
          realm INGEST.EXAMPLE.COM
 ```
 
@@ -28,7 +28,7 @@ Beats test (Mac)  --GSSAPI-->  Kafka container (:9095)
 | Setting | Value |
 |---------|--------|
 | AD VM | `khushi-ad-windows-server` (GCP `elastic-platform-ingest`, `us-central1-a`) |
-| AD public IP / KDC | `35.232.29.86` |
+| AD public IP / KDC | `[VM-IP]` |
 | Domain / NetBIOS / realm | `ingest.example.com` / `INGEST` / `INGEST.EXAMPLE.COM` |
 | GSSAPI listener | `localhost:9095` |
 | PLAINTEXT (healthcheck only) | `localhost:9092` (inside container) |
@@ -57,7 +57,7 @@ Check from your Mac:
 # TCP 88 should be open (was timeout before the rule)
 python3 - <<'PY'
 import socket
-host = "35.232.29.86"
+host = "[VM-IP]"
 for port in (88, 3389):
     s = socket.socket(); s.settimeout(5)
     try:
@@ -76,7 +76,7 @@ PY
 GCP Console cannot create AD users / SPNs / keytabs — you need a Windows session.
 
 1. Install **Windows App** (Microsoft Remote Desktop) on Mac.
-2. **Add PC** → PC name: `35.232.29.86` (IP goes here, **not** in the username).
+2. **Add PC** → PC name: `[VM-IP]` (IP goes here, **not** in the username).
 3. Credentials: username from GCP **Set Windows password** (e.g. `khushi_jain`), not `user@ip`.
 4. If the screen is black: wait, reconnect, or **Reset** the VM in GCP, then retry.
 
@@ -198,7 +198,7 @@ Compose mounts:
 
 `secrets/kafka_localhost.keytab` → `/etc/kafka_localhost.keytab`
 
-Env defaults (`AD_KDC_HOST=35.232.29.86`, realm, etc.) are in `libbeat/docker-compose.yml`.
+Env defaults (`AD_KDC_HOST=[VM-IP]`, realm, etc.) are in `libbeat/docker-compose.yml`.
 
 ---
 
@@ -215,7 +215,7 @@ Hardcoded in `kafka_kerberos_integration_test.go`:
 - host `localhost:9095`
 - realm `INGEST.EXAMPLE.COM`
 - user `beats` / password `Testing1!`
-- `testdata/krb5.conf` → KDC `35.232.29.86`
+- `testdata/krb5.conf` → KDC `[VM-IP]`
 
 Expected: `--- PASS: TestKafkaPublishKerberosAware`
 

@@ -127,12 +127,12 @@ services:
       - ADVERTISED_HOST=kafka
 
   # Kafka SASL/GSSAPI using cloud Active Directory as the KDC
-  # (AD public IP default: 35.232.29.86 — see kafka_kerberos/README.md).
+  # (AD public IP default: [VM-IP] — see kafka_kerberos/README.md).
   kafka_kerberos:
     build: ${ES_BEATS}/testing/environments/docker/kafka_kerberos
     hostname: kafka_kerberos
     environment:
-      - AD_KDC_HOST=${AD_KDC_HOST:-35.232.29.86}
+      - AD_KDC_HOST=${AD_KDC_HOST:-[VM-IP]}
       - AD_DOMAIN=${AD_DOMAIN:-ingest.example.com}
       - REALM_NAME=${REALM_NAME:-INGEST.EXAMPLE.COM}
       - KAFKA_SERVICE_HOST=localhost

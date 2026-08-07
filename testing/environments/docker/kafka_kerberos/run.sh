@@ -31,7 +31,7 @@ wait_for_port() {
 }
 
 # Active Directory is the KDC (no in-container MIT krb5kdc).
-AD_KDC_HOST=${AD_KDC_HOST:-35.232.29.86}
+AD_KDC_HOST=${AD_KDC_HOST:-[VM-IP]}
 AD_DOMAIN=${AD_DOMAIN:-ingest.example.com}
 REALM_NAME=${REALM_NAME:-INGEST.EXAMPLE.COM}
 KAFKA_SERVICE_HOST=${KAFKA_SERVICE_HOST:-localhost}
