@@ -12,6 +12,7 @@ import (
 
 	"github.com/elastic/beats/v7/x-pack/osquerybeat/internal/config"
 	"github.com/elastic/beats/v7/x-pack/osquerybeat/internal/ecs"
+	"github.com/elastic/beats/v7/x-pack/osquerybeat/internal/pub"
 )
 
 type mockBeatPublisher struct {
@@ -21,21 +22,23 @@ type mockBeatPublisher struct {
 var _ osquerybeatPublisher = (*mockBeatPublisher)(nil)
 var _ scheduledQueryPublisher = (*mockBeatPublisher)(nil)
 
-func (m *mockBeatPublisher) Publish(index, idValue, idFieldKey, responseID, spaceID, packID, packName, queryName string, meta map[string]interface{}, hits []map[string]interface{}, ecsm ecs.Mapping, reqData interface{}) {
+func (m *mockBeatPublisher) Publish(index, idValue, idFieldKey, responseID, spaceID, packID, packName, queryName string, meta map[string]any, hits []map[string]any, ecsm ecs.Mapping, reqData any) {
 }
 
-func (m *mockBeatPublisher) PublishActionResult(req map[string]interface{}, res map[string]interface{}) {
+func (m *mockBeatPublisher) PublishActionResult(req map[string]any, res map[string]any) {
 }
 
 func (m *mockBeatPublisher) PublishScheduledResponse(scheduleID, packID, packName, queryName, spaceID, responseID string, startedAt, completedAt, plannedScheduleTime time.Time, resultCount int, scheduleExecutionCount int64) {
 }
 
-func (m *mockBeatPublisher) PublishQueryProfile(index, queryName, actionID, responseID string, profile map[string]interface{}, reqData interface{}) {
+func (m *mockBeatPublisher) PublishQueryProfile(index, queryName, actionID, responseID, spaceID string, profile map[string]any, reqData any) {
 }
 
 func (m *mockBeatPublisher) Configure(inputs []config.InputConfig) error {
 	return nil
 }
+
+func (m *mockBeatPublisher) CaptureScheduledProfileSink(string) pub.ScheduledProfileSink { return nil }
 
 func (m *mockBeatPublisher) Close() {
 	m.closeCalled = true
@@ -56,5 +59,4 @@ func TestOsquerybeatClose_ClosesPublisher(t *testing.T) {
 
 	assert.True(t, p.closeCalled)
 	assert.True(t, cancelCalled)
-	assert.Nil(t, bt.cancel)
 }

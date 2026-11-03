@@ -129,6 +129,20 @@ func FetchOsquerydForTesting() error {
 	return osquerybeat.FetchOsqueryDistros()
 }
 
+// UpdateOsquery updates the bundled osquery version and artifact checksums.
+// Set OSQUERY_VERSION to select a specific release; the latest stable release
+// is used by default.
+func UpdateOsquery() error {
+	args := []string{"run", "./scripts/update_osquery"}
+	if version := strings.TrimSpace(os.Getenv("OSQUERY_VERSION")); version != "" {
+		args = append(args, "-version", version)
+	}
+	cmd := exec.Command("go", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // ensureExtensionInBinDir places osquery-extension in binDir, building it first if absent.
 func ensureExtensionInBinDir(binDir string) error {
 	extName := "osquery-extension.ext"
@@ -213,6 +227,7 @@ func BuildExt() error {
 	params.InputFiles = []string{"./ext/osquery-extension/."}
 	params.Name = "osquery-extension"
 	params.CGO = true
+	disableSqliteLFS(params.Env)
 	err := devtools.Build(params)
 	if err != nil {
 		return err
@@ -226,6 +241,30 @@ func BuildExt() error {
 		}
 	}
 	return nil
+}
+
+// disableSqliteLFS adds -DSQLITE_DISABLE_LFS to CGO_CFLAGS on 64-bit Linux.
+// The SQLite amalgamation (github.com/mattn/go-sqlite3, used by the
+// osquery-extension) enables POSIX large file support (_FILE_OFFSET_BITS=64),
+// which makes glibc >= 2.28 headers redirect fcntl calls to the
+// fcntl64@GLIBC_2.28 symbol, raising the minimum glibc required at runtime
+// and breaking supported distributions with older glibc, such as Ubuntu
+// 18.04 (glibc 2.27). On 64-bit platforms off_t is 64 bits regardless, so
+// disabling LFS only removes the fcntl64 reference; it does not limit the
+// SQLite database file size. It must not be applied to 32-bit platforms,
+// where it would cap SQLite files at 2 GiB. In builds that compile no SQLite
+// C code (osquerybeat itself) the macro is defined but unused.
+func disableSqliteLFS(env map[string]string) {
+	if devtools.GOOS != "linux" || (devtools.GOARCH != "amd64" && devtools.GOARCH != "arm64") {
+		return
+	}
+	// Setting CGO_CFLAGS discards cgo's default "-O2 -g", so preserve any
+	// existing flags or restate the defaults.
+	cflags := os.Getenv("CGO_CFLAGS")
+	if cflags == "" {
+		cflags = "-O2 -g"
+	}
+	env["CGO_CFLAGS"] = cflags + " -DSQLITE_DISABLE_LFS"
 }
 
 // Clean cleans all generated files and build artifacts.
@@ -315,7 +354,9 @@ func GolangCrossBuild() error {
 		return err
 	}
 
-	return devtools.GolangCrossBuild(devtools.DefaultGolangCrossBuildArgs())
+	args := devtools.DefaultGolangCrossBuildArgs()
+	disableSqliteLFS(args.Env)
+	return devtools.GolangCrossBuild(args)
 }
 
 // CrossBuild cross-builds the beat for all target platforms.

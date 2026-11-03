@@ -5,7 +5,9 @@
 package pub
 
 import (
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/elastic/beats/v7/libbeat/beat"
@@ -16,6 +18,7 @@ import (
 	"github.com/elastic/beats/v7/x-pack/osquerybeat/internal/ecs"
 	"github.com/elastic/elastic-agent-libs/logp"
 	"github.com/elastic/elastic-agent-libs/mapstr"
+	"github.com/elastic/elastic-agent-libs/monitoring"
 )
 
 const (
@@ -37,28 +40,44 @@ type Publisher struct {
 	// client for osquery_manager.query_profile
 	queryProfileClient    beat.Client
 	profileDropWarnLogged bool
+
+	// Scheduled profiling must not wait behind a result publication holding mx.
+	scheduledProfileMu      sync.Mutex
+	scheduledProfile        *scheduledProfileSink
+	scheduledProfileClosed  bool
+	scheduledProfileMissing bool
+	scheduledProfileDropped *monitoring.Uint
+	scheduledProfileWarning atomic.Int64
 }
 
 func New(b *beat.Beat, log *logp.Logger) *Publisher {
+	reg := b.Monitoring.StatsRegistry()
+	if reg == nil {
+		reg = monitoring.NewRegistry()
+	}
 	return &Publisher{
-		b:   b,
-		log: log,
+		b:                       b,
+		log:                     log,
+		scheduledProfileDropped: monitoring.NewUint(reg.GetOrCreateRegistry("osquerybeat.scheduled_query_profiles"), "dropped.output_full"),
 	}
 }
 
+// Configure replaces the clients for the given inputs. It must be called from a
+// single goroutine; only Close may run concurrently with it.
 func (p *Publisher) Configure(inputs []config.InputConfig) error {
+	// Policy replacement must invalidate delayed profiles even while a result
+	// publication holds mx, and even when all inputs have been removed.
+	p.retireScheduledProfileSink()
+	p.mx.Lock()
+	defer p.mx.Unlock()
 	if len(inputs) == 0 {
 		return nil
 	}
 
-	p.mx.Lock()
-	defer p.mx.Unlock()
+	resultInput, actionResponsesInput, profileInput := streamInputs(inputs)
 
-	// Setup configuration pointers to the clients and corresponding default datasets
-
-	// The osquery_manager.result is always first
-	if len(inputs) > 0 {
-		processors, err := p.processorsForInputConfig(inputs[0], config.DefaultDataset)
+	if resultInput != nil {
+		processors, err := processorsForInputConfig(*resultInput, config.DefaultDataset, p.log)
 		if err != nil {
 			return err
 		}
@@ -80,12 +99,11 @@ func (p *Publisher) Configure(inputs []config.InputConfig) error {
 		if oldclient != nil {
 			oldclient.Close()
 		}
-
 	}
 
-	// Attach remaining DefaultActionResultsDataset if present
-	if len(inputs) > 1 {
-		processors, err := p.processorsForInputConfig(inputs[1], config.DefaultActionResponsesDataset)
+	// Attach DefaultActionResponsesDataset if present
+	if actionResponsesInput != nil {
+		processors, err := processorsForInputConfig(*actionResponsesInput, config.DefaultActionResponsesDataset, p.log)
 		if err != nil {
 			return err
 		}
@@ -114,18 +132,10 @@ func (p *Publisher) Configure(inputs []config.InputConfig) error {
 		}
 	}
 
-	// Attach optional query profiling stream if present, identified by dataset.
-	// For query profile events to be published, the integration (e.g. Fleet policy) must include
-	// an input stream with dataset osquery_manager.query_profile. Otherwise profile events are dropped.
-	var profileInput *config.InputConfig
-	for i := range inputs {
-		if inputs[i].Datastream.Dataset == config.DefaultQueryProfileDataset {
-			profileInput = &inputs[i]
-			break
-		}
-	}
+	// Attach optional query profiling stream if present. For query profile events to be
+	// published, the integration must include a stream with dataset osquery_manager.query_profile.
 	if profileInput != nil {
-		processors, err := p.processorsForInputConfig(*profileInput, config.DefaultQueryProfileDataset)
+		processors, err := processorsForInputConfig(*profileInput, config.DefaultQueryProfileDataset, p.log)
 		if err != nil {
 			return err
 		}
@@ -144,6 +154,11 @@ func (p *Publisher) Configure(inputs []config.InputConfig) error {
 		if oldClient != nil {
 			oldClient.Close()
 		}
+		if resultInput != nil {
+			if err := p.configureScheduledProfileSink(*resultInput, *profileInput); err != nil {
+				return err
+			}
+		}
 	} else {
 		if p.queryProfileClient != nil {
 			p.queryProfileClient.Close()
@@ -153,7 +168,56 @@ func (p *Publisher) Configure(inputs []config.InputConfig) error {
 	return nil
 }
 
-func (p *Publisher) Publish(index, idValue, idFieldKey, responseID, spaceID, packID, packName, queryName string, meta map[string]interface{}, hits []map[string]interface{}, ecsm ecs.Mapping, reqData interface{}) {
+// CheckProcessors returns an error if the processors that Configure would
+// build for inputs cannot be built. It builds them and closes them again, so
+// each policy builds its processors one extra time; some processors, such as
+// add_cloud_metadata, do work when they are built.
+func CheckProcessors(inputs []config.InputConfig, log *logp.Logger) error {
+	result, actionResponses, profile := streamInputs(inputs)
+	for _, s := range []struct {
+		in      *config.InputConfig
+		dataset string
+	}{
+		{result, config.DefaultDataset},
+		{actionResponses, config.DefaultActionResponsesDataset},
+		{profile, config.DefaultQueryProfileDataset},
+	} {
+		if s.in == nil {
+			continue
+		}
+		procs, err := processorsForInputConfig(*s.in, s.dataset, log)
+		if err != nil {
+			return fmt.Errorf("invalid processors for %s: %w", s.dataset, err)
+		}
+		if err := processors.Close(procs); err != nil {
+			log.Warnf("Failed to close the processors built to check the %s policy: %v", s.dataset, err)
+		}
+	}
+	return nil
+}
+
+// streamInputs returns the inputs for the result, action responses and query
+// profile streams, or nil for a stream with no input. Each stream is located
+// by dataset so that delivery order does not affect which client handles which
+// data stream. The first input for a dataset wins.
+func streamInputs(inputs []config.InputConfig) (result, actionResponses, profile *config.InputConfig) {
+	result = config.ResultInput(inputs)
+	for i := range inputs {
+		switch inputs[i].Datastream.Dataset {
+		case config.DefaultActionResponsesDataset:
+			if actionResponses == nil {
+				actionResponses = &inputs[i]
+			}
+		case config.DefaultQueryProfileDataset:
+			if profile == nil {
+				profile = &inputs[i]
+			}
+		}
+	}
+	return result, actionResponses, profile
+}
+
+func (p *Publisher) Publish(index, idValue, idFieldKey, responseID, spaceID, packID, packName, queryName string, meta map[string]any, hits []map[string]any, ecsm ecs.Mapping, reqData any) {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
@@ -165,6 +229,12 @@ func (p *Publisher) Publish(index, idValue, idFieldKey, responseID, spaceID, pac
 }
 
 func (p *Publisher) Close() {
+	// Once closed is set, configureScheduledProfileSink installs no new lease,
+	// so a single retire covers one installed earlier.
+	p.scheduledProfileMu.Lock()
+	p.scheduledProfileClosed = true
+	p.scheduledProfileMu.Unlock()
+	p.retireScheduledProfileSink()
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
@@ -182,7 +252,7 @@ func (p *Publisher) Close() {
 	}
 }
 
-func (p *Publisher) PublishActionResult(req map[string]interface{}, res map[string]interface{}) {
+func (p *Publisher) PublishActionResult(req map[string]any, res map[string]any) {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
@@ -198,9 +268,10 @@ func (p *Publisher) PublishActionResult(req map[string]interface{}, res map[stri
 	p.publishActionResponseEvent(fields, time.Now())
 }
 
-// PublishScheduledResponse publishes a synthetic response document for a scheduled query run (no action).
-// Includes schedule_execution_count;
-// native uses 1 + (run_time - start_date) / interval).
+// PublishScheduledResponse publishes a synthetic response document for a
+// scheduled query run (no action). Native schedule execution counts use
+// 1 + (run_time - start_date) / interval. The event timestamp is floored at the
+// planned slot while the original started_at and completed_at fields are kept.
 func (p *Publisher) PublishScheduledResponse(scheduleID, packID, packName, queryName, spaceID, responseID string, startedAt, completedAt, plannedScheduleTime time.Time, resultCount int, scheduleExecutionCount int64) {
 	p.mx.Lock()
 	defer p.mx.Unlock()
@@ -210,7 +281,7 @@ func (p *Publisher) PublishScheduledResponse(scheduleID, packID, packName, query
 		return
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"schedule_id":              scheduleID,
 		"response_id":              responseID,
 		"action_input_type":        "osquery_scheduled",
@@ -218,8 +289,8 @@ func (p *Publisher) PublishScheduledResponse(scheduleID, packID, packName, query
 		"completed_at":             completedAt.Format(time.RFC3339Nano),
 		"planned_schedule_time":    plannedScheduleTime.Format(time.RFC3339Nano),
 		"schedule_execution_count": scheduleExecutionCount,
-		"action_response": map[string]interface{}{
-			"osquery": map[string]interface{}{
+		"action_response": map[string]any{
+			"osquery": map[string]any{
 				"count": resultCount,
 			},
 		},
@@ -238,10 +309,14 @@ func (p *Publisher) PublishScheduledResponse(scheduleID, packID, packName, query
 	}
 
 	p.log.Debugf("Scheduled response event sent, schedule_id=%s, schedule_execution_count=%d", scheduleID, scheduleExecutionCount)
-	p.publishActionResponseEvent(fields, completedAt)
+	eventTimestamp := completedAt
+	if eventTimestamp.Before(plannedScheduleTime) {
+		eventTimestamp = plannedScheduleTime
+	}
+	p.publishActionResponseEvent(fields, eventTimestamp)
 }
 
-func (p *Publisher) publishActionResponseEvent(fields map[string]interface{}, timestamp time.Time) {
+func (p *Publisher) publishActionResponseEvent(fields map[string]any, timestamp time.Time) {
 	event := beat.Event{
 		Timestamp: timestamp,
 		Fields:    fields,
@@ -249,7 +324,7 @@ func (p *Publisher) publishActionResponseEvent(fields map[string]interface{}, ti
 	p.actionResponsesClient.Publish(event)
 }
 
-func (p *Publisher) PublishQueryProfile(index, queryName, actionID, responseID string, profile map[string]interface{}, reqData interface{}) {
+func (p *Publisher) PublishQueryProfile(index, queryName, actionID, responseID, spaceID string, profile map[string]any, reqData any) {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
@@ -261,27 +336,7 @@ func (p *Publisher) PublishQueryProfile(index, queryName, actionID, responseID s
 		return
 	}
 
-	fields := mapstr.M{
-		"type": "osquery_profile",
-		"event": map[string]interface{}{
-			"module": eventModule,
-		},
-		"osquery_profile": profile,
-	}
-	if queryName != "" {
-		fields["query"] = map[string]interface{}{
-			"name": queryName,
-		}
-	}
-	if actionID != "" {
-		fields["action_id"] = actionID
-	}
-	if responseID != "" {
-		fields["response_id"] = responseID
-	}
-	if reqData != nil {
-		fields["action_data"] = reqData
-	}
+	fields := queryProfileToEvent(queryName, actionID, responseID, spaceID, profile, reqData, "", 0)
 
 	event := beat.Event{
 		Timestamp: time.Now(),
@@ -296,10 +351,43 @@ func (p *Publisher) PublishQueryProfile(index, queryName, actionID, responseID s
 	p.queryProfileClient.Publish(event)
 }
 
-func actionResultToEvent(req, res map[string]interface{}) map[string]interface{} {
-	m := make(map[string]interface{}, 9)
+// queryProfileToEvent builds the field set for a query profile document.
+func queryProfileToEvent(queryName, actionID, responseID, spaceID string, profile map[string]any, reqData any, scheduleID string, scheduleExecutionCount int64) mapstr.M {
+	fields := mapstr.M{
+		"type": "osquery_profile",
+		"event": map[string]any{
+			"module": eventModule,
+		},
+		"osquery_profile": profile,
+	}
+	if queryName != "" {
+		fields["query"] = map[string]any{
+			"name": queryName,
+		}
+	}
+	if actionID != "" {
+		fields["action_id"] = actionID
+	}
+	if responseID != "" {
+		fields["response_id"] = responseID
+	}
+	if spaceID != "" {
+		fields["space_id"] = spaceID
+	}
+	if scheduleID != "" {
+		fields["schedule_id"] = scheduleID
+		fields["schedule_execution_count"] = scheduleExecutionCount
+	}
+	if reqData != nil {
+		fields["action_data"] = reqData
+	}
+	return fields
+}
 
-	copyKey := func(key string, src, dst map[string]interface{}) {
+func actionResultToEvent(req, res map[string]any) map[string]any {
+	m := make(map[string]any, 9)
+
+	copyKey := func(key string, src, dst map[string]any) {
 		if v, ok := src[key]; ok {
 			dst[key] = v
 		}
@@ -310,8 +398,8 @@ func actionResultToEvent(req, res map[string]interface{}) map[string]interface{}
 	copyKey("error", res, m)
 
 	if v, ok := res["count"]; ok {
-		m["action_response"] = map[string]interface{}{
-			"osquery": map[string]interface{}{
+		m["action_response"] = map[string]any{
+			"osquery": map[string]any{
 				"count": v,
 			},
 		}
@@ -334,8 +422,8 @@ func actionResultToEvent(req, res map[string]interface{}) map[string]interface{}
 	return m
 }
 
-func (p *Publisher) processorsForInputConfig(inCfg config.InputConfig, defaultDataset string) (procs *processors.Processors, err error) {
-	procs = processors.NewList(p.log)
+func processorsForInputConfig(inCfg config.InputConfig, defaultDataset string, log *logp.Logger) (procs *processors.Processors, err error) {
+	procs = processors.NewList(log)
 
 	// Use only first input processor.
 	// When Processors is empty, the data_stream processor is not added; Fleet-managed inputs
@@ -362,7 +450,7 @@ func (p *Publisher) processorsForInputConfig(inCfg config.InputConfig, defaultDa
 
 		procs.AddProcessor(add_data_stream.New(ds))
 
-		userProcs, err := processors.New(inCfg.Processors, p.log)
+		userProcs, err := processors.New(inCfg.Processors, log)
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +459,7 @@ func (p *Publisher) processorsForInputConfig(inCfg config.InputConfig, defaultDa
 	return procs, nil
 }
 
-func hitToEvent(index, eventType, idValue, idFieldKey, responseID, spaceID, packID, packName, queryName string, meta, hit map[string]interface{}, ecsm ecs.Mapping, reqData interface{}) beat.Event {
+func hitToEvent(index, eventType, idValue, idFieldKey, responseID, spaceID, packID, packName, queryName string, meta, hit map[string]any, ecsm ecs.Mapping, reqData any) beat.Event {
 	var fields mapstr.M
 
 	if len(ecsm) > 0 {
@@ -383,13 +471,13 @@ func hitToEvent(index, eventType, idValue, idFieldKey, responseID, spaceID, pack
 
 	// Add event.module for ECS
 	// There could be already "event" properties set, preserve them and set the "event.module"
-	var evf map[string]interface{}
+	var evf map[string]any
 	ievf, ok := fields["event"]
 	if ok {
-		evf, ok = ievf.(map[string]interface{})
+		evf, ok = ievf.(map[string]any)
 	}
 	if !ok {
-		evf = make(map[string]interface{})
+		evf = make(map[string]any)
 	}
 	evf["module"] = eventModule
 	fields["event"] = evf
